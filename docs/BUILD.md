@@ -101,4 +101,13 @@ scripts/repack_bootimg.sh <你的原厂 boot.img> \
 
 1. 记录 `Image` 的 SHA256，填写到 `SOURCE.md` 的 Release 对照表；
 2. 用自备原厂 `boot.img` 打包并**先在设备上验证**：`getenforce`、root 域、AVC 日志；
-3. 打包 AnyKernel3 zip 时保留其 `LICENSE`，并在 Release notes 中写明对应的源码 commit。
+3. 需要刷机包时执行：
+
+```bash
+scripts/make-ak3-zip.sh kernel/msm-4.19/out/arch/arm64/boot/Image v1.0.0
+```
+
+   脚本会从上游拉取 AnyKernel3 模板、套用 `release/anykernel.sh`（设备相关配置）、
+   放入 `Image` 并生成 zip 与 `SHA256SUMS`。zip 内保留 AnyKernel3 的 `LICENSE`，
+   且**不含**原厂 ramdisk/dtb（刷机时从设备自身 boot 分区读取）。
+4. 发布时把 zip 与 `SHA256SUMS` 上传到 Release，并在 Release notes 里写明对应的源码 commit。

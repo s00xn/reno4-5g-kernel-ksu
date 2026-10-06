@@ -45,6 +45,7 @@ patches/kernel/    内核改动补丁 + 新增文件（4.19 兼容回移、Kerne
 patches/vendor/    vendor 树（devicetree / OPLUS 驱动）改动补丁
 patches/kernelsu/  KernelSU 的 4.19 适配补丁（固定基线 62e88ca9）
 scripts/           clone 官方树、下载工具链、构建、打包、提取 ksud
+release/           AnyKernel3 的设备相关配置（anykernel.sh）与其 LICENSE
 docs/              构建 / 刷机 / SELinux 4.19 实现说明 / 变更记录
 base/              上游 base commit 与补丁应用顺序
 ```
@@ -69,6 +70,9 @@ scripts/build.sh
 
 # 5) 用你自己设备的原厂 boot.img 重打包
 scripts/repack_bootimg.sh <你的原厂boot.img> kernel/msm-4.19/out/arch/arm64/boot/Image new-boot.img
+
+# 6) 或者打一个 AnyKernel3 刷机包（适合在 recovery 里刷）
+scripts/make-ak3-zip.sh kernel/msm-4.19/out/arch/arm64/boot/Image v1.0.0
 ```
 
 构建环境、依赖包与常见问题见 [`docs/BUILD.md`](docs/BUILD.md)；刷入与回退见 [`docs/FLASH.md`](docs/FLASH.md)。

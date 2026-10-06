@@ -27,8 +27,13 @@ fastboot reboot
 
 ### 备选：AnyKernel3 zip
 
-把构建好的 `Image` 放进 AnyKernel3 模板（保留其 `LICENSE`），在 recovery 中刷入 zip。
-这种方式的好处是 zip 只带内核，ramdisk 从设备自身读取，不含任何原厂专有文件。
+```bash
+scripts/make-ak3-zip.sh kernel/msm-4.19/out/arch/arm64/boot/Image v1.0.0
+# 生成 out/Reno4_5G_KSU_kernel_v1.0.0.zip 与 out/SHA256SUMS
+```
+
+在 recovery 中刷入该 zip。zip 只带内核，ramdisk/dtb 从设备自身读取，不含任何原厂专有文件，
+并保留了 AnyKernel3 的 `LICENSE`。
 
 ## 3. 刷后验证
 
