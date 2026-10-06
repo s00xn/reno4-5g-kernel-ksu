@@ -27,25 +27,51 @@ log()  { printf '\033[1;34m>>>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[!]\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31m[x]\033[0m %s\n' "$*" >&2; exit 1; }
 
-apply_patch() {   # apply_patch <工作目录> <补丁> [--git]
-    local dir="$1" patch="$2"
-    if [ ! -f "$patch" ]; then warn "补丁不存在：$patch"; return 0; fi
-    if ( cd "$dir" && git apply --check --reverse "$patch" >/dev/null 2>&1 ); then
+# apply_patch <工作目录> <补丁> [<相对仓库根的目录前缀>]
+#
+# 说明：若 <工作目录> 本身不是 git 仓库根，而它又位于某个 git 仓库内部，
+# `git apply` 会把补丁路径解析为"仓库根相对"，从而把 <工作目录> 之外的文件
+# 全部忽略（表现为"什么都不做却退出 0"）。因此对 vendor 这种"子目录 + 无独立
+# .git"的情况，必须用 `git -C <repo> apply --directory=<prefix>` 显式指定前缀。
+apply_patch() {
+    local dir="$1" patch="$2" prefix="${3:-}"
+    [ -f "$patch" ] || { warn "补丁不存在：$patch"; return 0; }
+
+    git_apply() {   # 传 --check / --check --reverse / 空
+        if [ -n "$prefix" ]; then
+            git -C "$ROOT" apply --directory="$prefix" "$@" "$patch"
+        else
+            ( cd "$dir" && git apply "$@" "$patch" )
+        fi
+    }
+    patch_tool() {  # 传 --dry-run 或 空
+        ( cd "$dir" && patch -p1 -s -i "$patch" "$@" )
+    }
+
+    if git_apply --check --reverse >/dev/null 2>&1; then
         log "补丁已应用过，跳过：$(basename "$patch")"
         return 0
     fi
-    if ( cd "$dir" && git apply --check "$patch" >/dev/null 2>&1 ); then
-        ( cd "$dir" && git apply "$patch" )
-        log "已应用 $(basename "$patch")"
+    if git_apply --check >/dev/null 2>&1; then
+        git_apply && log "已应用 $(basename "$patch")"
         return 0
     fi
-    if ( cd "$dir" && patch -p1 --dry-run -s -i "$patch" >/dev/null 2>&1 ); then
-        ( cd "$dir" && patch -p1 -s -i "$patch" )
-        log "已应用（patch）$(basename "$patch")"
+    if patch_tool --dry-run >/dev/null 2>&1; then
+        patch_tool && log "已应用（patch）$(basename "$patch")"
         return 0
     fi
     warn "补丁无法应用：$(basename "$patch")"
     return 1
+}
+
+# require_marker <文件> <grep 模式> <说明>
+# 补丁"应用成功"之后的内容校验：防止上面提到的 no-op 情况静默通过。
+require_marker() {
+    if grep -q "$2" "$1" 2>/dev/null; then
+        log "校验通过：$3"
+    else
+        die "校验失败：$3（$1 中找不到 $2）"
+    fi
 }
 
 if [ "${1:-}" = "--force" ]; then
@@ -84,6 +110,7 @@ done
 # 4) .gitignore 调整（让 techpack 子目录被跟踪）
 apply_patch "$KERNEL_DIR" "$ROOT/patches/kernel/0000-techpack-gitignore.patch" \
     || die "techpack .gitignore 补丁应用失败"
+require_marker "$KERNEL_DIR/.gitignore" 'techpack/\*' "techpack 子目录已取消忽略"
 
 # 5) vendor 树（拷出子目录，不带 .git）
 if [ -d "$ROOT/vendor/qcom" ]; then
@@ -102,8 +129,10 @@ fi
 # 6) 本项目补丁
 apply_patch "$KERNEL_DIR" "$ROOT/patches/kernel/0001-reno4-5g-kernel-4.19-kernelsu.patch" \
     || die "内核补丁应用失败"
-apply_patch "$ROOT/vendor" "$ROOT/patches/vendor/0001-lito-devicetree-and-oplus-fixes.patch" \
+require_marker "$KERNEL_DIR/fs/namespace.c" 'int path_mount(' "内核 4.19 回移（fs/namespace.c 的 path_mount）"
+apply_patch "$ROOT/vendor" "$ROOT/patches/vendor/0001-lito-devicetree-and-oplus-fixes.patch" "vendor" \
     || die "vendor 补丁应用失败"
+require_marker "$ROOT/vendor/qcom/proprietary/devicetree-4.19/19065/Makefile" 'CONFIG_ARCH_KONA' "vendor devicetree Makefile 改动"
 
 # 7) 补丁新增的文件（defconfig 与头文件）
 if [ -d "$ROOT/patches/kernel/new-files" ]; then

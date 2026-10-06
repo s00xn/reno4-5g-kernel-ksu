@@ -20,7 +20,7 @@
 | `patches/kernel/0000-techpack-gitignore.patch` | 让 `techpack/{camera,display,video}` 被内核树跟踪（从 modules 仓库并入的子目录） |
 | `patches/kernel/0001-reno4-5g-kernel-4.19-kernelsu.patch` | 内核 4.19 兼容回移、KernelSU 集成、defconfig 调整 |
 | `patches/kernel/new-files/` | 该补丁新增的文件（`stock_lito_defconfig` 与若干头文件），需按原路径拷入内核树 |
-| `patches/vendor/0001-lito-devicetree-and-oplus-fixes.patch` | vendor 树改动（devicetree Makefile 的 LITO 修正、OPLUS 驱动修正） |
+| `patches/vendor/0001-lito-devicetree-and-oplus-fixes.patch` | vendor 树改动（20 个 devicetree 变体的 dtb 目标修正、OPLUS 驱动的编译修正） |
 | `patches/kernelsu/0001-android-4.19-support.patch` | KernelSU 的 4.19 非 GKI 适配（对着 `62e88ca9` 应用，保持 `KSU_VERSION=32584`） |
 
 应用的目录结构与顺序见 `base/BASE.md` 与 `scripts/prepare-tree.sh`。

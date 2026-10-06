@@ -44,7 +44,8 @@
 
 ### vendor 树
 
-- 20 个 devicetree Makefile 的 `kona-mtp` → `LITO` 修正（Reno4 5G 为 LITO only）
+- 20 个 devicetree 变体 Makefile：`dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb` 改为 `dtb-$(CONFIG_ARCH_KONA) += ...`
+  （本设备 DEFCONFIG 里 `CONFIG_ARCH_KONA` 未开启，这样可避免 20 个变体同时为 LITO 生成同名 `kona-mtp.dtb` 目标）
 - `oplus/kernel/system/misc/bootloader_log.c`：去掉 `__init`
 - `oplus/kernel/touchpanel/.../touchpanel_common_driver.c`：编译修正
 
