@@ -1,0 +1,750 @@
+diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
+index 5bb59bfe..a766239b 100644
+--- a/kernel/feature/selinux_hide.c
++++ b/kernel/feature/selinux_hide.c
+@@ -29,6 +29,7 @@
+ #include "policy/feature.h"
+ #include "hook/lsm_hook.h"
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)
+ static DEFINE_MUTEX(selinux_hide_mutex);
+ static bool ksu_selinux_hide_enabled __read_mostly = false;
+ static bool ksu_selinux_hide_running __read_mostly = false;
+@@ -1133,3 +1134,32 @@ allow:
+     goto out;
+ }
+ #endif
++
++#else /* LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0) */
++
++/* 4.19 compatibility stubs: selinux_hide relies on selinux_state.policy,
++ * selinux_state.status_lock/status_page and struct selinux_policy which
++ * were introduced in 5.7. KernelSU core root functionality does not
++ * depend on this optional feature, so stub it out on older kernels.
++ */
++void ksu_selinux_hide_init()
++{
++}
++
++void ksu_selinux_hide_exit()
++{
++}
++
++void ksu_selinux_hide_drop_backup_if_unused()
++{
++}
++
++void ksu_selinux_hide_handle_second_stage()
++{
++}
++
++void ksu_selinux_hide_handle_post_fs_data()
++{
++}
++
++#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0) */
+diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
+index 33df9d15..2a298a0c 100644
+--- a/kernel/feature/sucompat.c
++++ b/kernel/feature/sucompat.c
+@@ -25,6 +25,7 @@
+ #include "sulog/event.h"
+ #include "ksu.h"
+ #include "util.h"
++#include "selinux/selinux.h"
+ 
+ #define SU_PATH "/system/bin/su"
+ #define SH_PATH "/system/bin/sh"
+@@ -197,7 +198,12 @@ long ksu_handle_execve_sucompat(const char __user **filename_user, int orig_nr,
+     }
+ 
+     old_cred = override_creds(ksu_cred);
++    /* 4.19: some GSI sepolicy blobs do not define the ksu domain, so
++     * ksu_cred may hold an unusable SID; temporarily relax SELinux
++     * enforcement so the ksud open (and thus su) can succeed. */
++    setenforce(false);
+     ksud_file = filp_open(KSUD_PATH, O_PATH, 0);
++    setenforce(true);
+     revert_creds(old_cred);
+     if (IS_ERR(ksud_file)) {
+         pr_err("open ksud err: %ld\n", PTR_ERR(ksud_file));
+diff --git a/kernel/infra/file_wrapper.c b/kernel/infra/file_wrapper.c
+index 66ea2958..0c00d8ae 100644
+--- a/kernel/infra/file_wrapper.c
++++ b/kernel/infra/file_wrapper.c
+@@ -84,6 +84,7 @@ static ssize_t ksu_wrapper_write_iter(struct kiocb *iocb, struct iov_iter *iovi)
+     return orig->f_op->write_iter(iocb, iovi);
+ }
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+ static int ksu_wrapper_iopoll(struct kiocb *kiocb, struct io_comp_batch *icb, unsigned int v)
+ {
+@@ -101,6 +102,7 @@ static int ksu_wrapper_iopoll(struct kiocb *kiocb, bool spin)
+     return orig->f_op->iopoll(kiocb, spin);
+ }
+ #endif
++#endif /* >= 5.3 */
+ 
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
+ static int ksu_wrapper_iterate(struct file *fp, struct dir_context *dc)
+@@ -307,6 +309,7 @@ static ssize_t ksu_wrapper_copy_file_range(struct file *file_in, loff_t pos_in,
+ // https://cs.android.com/android/kernel/superproject/+/common-android-mainline:common/fs/remap_range.c;l=403-404;drc=398da7defe218d3e51b0f3bdff75147e28125b60
+ // REMAP_FILE_DEDUP: use file_out
+ // https://cs.android.com/android/kernel/superproject/+/common-android-mainline:common/fs/remap_range.c;l=483-484;drc=398da7defe218d3e51b0f3bdff75147e28125b60
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)
+ static loff_t ksu_wrapper_remap_file_range(struct file *file_in, loff_t pos_in, struct file *file_out, loff_t pos_out,
+                                            loff_t len, unsigned int remap_flags)
+ {
+@@ -320,6 +323,7 @@ static loff_t ksu_wrapper_remap_file_range(struct file *file_in, loff_t pos_in,
+         return orig->f_op->remap_file_range(orig, pos_in, file_out, pos_out, len, remap_flags);
+     }
+ }
++#endif /* >= 5.0 */
+ 
+ static int ksu_wrapper_fadvise(struct file *fp, loff_t off1, loff_t off2, int flags)
+ {
+@@ -360,7 +364,9 @@ static struct ksu_file_wrapper *ksu_create_file_wrapper(struct file *fp)
+     p->ops.write = fp->f_op->write ? ksu_wrapper_write : NULL;
+     p->ops.read_iter = fp->f_op->read_iter ? ksu_wrapper_read_iter : NULL;
+     p->ops.write_iter = fp->f_op->write_iter ? ksu_wrapper_write_iter : NULL;
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
+     p->ops.iopoll = fp->f_op->iopoll ? ksu_wrapper_iopoll : NULL;
++#endif
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
+     p->ops.iterate = fp->f_op->iterate ? ksu_wrapper_iterate : NULL;
+ #endif
+@@ -391,7 +397,9 @@ static struct ksu_file_wrapper *ksu_create_file_wrapper(struct file *fp)
+     p->ops.fallocate = fp->f_op->fallocate ? ksu_wrapper_fallocate : NULL;
+     p->ops.show_fdinfo = fp->f_op->show_fdinfo ? ksu_wrapper_show_fdinfo : NULL;
+     p->ops.copy_file_range = fp->f_op->copy_file_range ? ksu_wrapper_copy_file_range : NULL;
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)
+     p->ops.remap_file_range = fp->f_op->remap_file_range ? ksu_wrapper_remap_file_range : NULL;
++#endif
+     p->ops.fadvise = fp->f_op->fadvise ? ksu_wrapper_fadvise : NULL;
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+@@ -448,11 +456,16 @@ static struct inode *ksu_anon_inode_make_secure_inode(const char *name, const st
+     if (IS_ERR(inode))
+         return inode;
+     inode->i_flags &= ~S_PRIVATE;
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 13, 0)
+     error = security_inode_init_security_anon(inode, &qname, context_inode);
+     if (error) {
+         iput(inode);
+         return ERR_PTR(error);
+     }
++#else
++    /* no-op on pre-5.13 kernels (no security_inode_init_security_anon) */
++    (void)error;
++#endif
+     return inode;
+ }
+ 
+diff --git a/kernel/manager/pkg_observer.c b/kernel/manager/pkg_observer.c
+index 512b9929..46252b70 100644
+--- a/kernel/manager/pkg_observer.c
++++ b/kernel/manager/pkg_observer.c
+@@ -21,6 +21,7 @@ struct watch_dir {
+ 
+ static struct fsnotify_group *g;
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 2, 0)
+ static int ksu_handle_inode_event(struct fsnotify_mark *mark, u32 mask, struct inode *inode, struct inode *dir,
+                                   const struct qstr *file_name, u32 cookie)
+ {
+@@ -38,6 +39,29 @@ static int ksu_handle_inode_event(struct fsnotify_mark *mark, u32 mask, struct i
+ static const struct fsnotify_ops ksu_ops = {
+     .handle_inode_event = ksu_handle_inode_event,
+ };
++#else
++/* 4.19 fsnotify uses handle_event instead of handle_inode_event */
++static int ksu_handle_event(struct fsnotify_group *group, struct inode *inode,
++                            u32 mask, const void *data, int data_type,
++                            const unsigned char *file_name, u32 cookie,
++                            struct fsnotify_iter_info *iter_info)
++{
++    if (!file_name)
++        return 0;
++    if (mask & FS_ISDIR)
++        return 0;
++    if (strlen((const char *)file_name) == 13 &&
++        !memcmp(file_name, "packages.list", 13)) {
++        pr_info("packages.list detected: %d\n", mask);
++        track_throne(false);
++    }
++    return 0;
++}
++
++static const struct fsnotify_ops ksu_ops = {
++    .handle_event = ksu_handle_event,
++};
++#endif
+ 
+ static int add_mark_on_inode(struct inode *inode, u32 mask, struct fsnotify_mark **out)
+ {
+diff --git a/kernel/policy/allowlist.c b/kernel/policy/allowlist.c
+index 89e8d089..13ace830 100644
+--- a/kernel/policy/allowlist.c
++++ b/kernel/policy/allowlist.c
+@@ -3,6 +3,7 @@
+ #include <linux/rculist.h>
+ #include <linux/mutex.h>
+ #include <linux/task_work.h>
++#include <linux/sched/task.h>
+ #include <linux/capability.h>
+ #include <linux/compiler.h>
+ #include <linux/fs.h>
+diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
+index b85dbf97..5af9e7b5 100644
+--- a/kernel/policy/app_profile.c
++++ b/kernel/policy/app_profile.c
+@@ -87,7 +87,9 @@ static void disable_seccomp(void)
+ 
+     current->seccomp.mode = 0;
+     current->seccomp.filter = NULL;
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
+     atomic_set(&current->seccomp.filter_count, 0);
++#endif
+     spin_unlock_irq(&current->sighand->siglock);
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
+index 38d1476f..4b697155 100644
+--- a/kernel/runtime/ksud_integration.c
++++ b/kernel/runtime/ksud_integration.c
+@@ -161,7 +161,16 @@ void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
+         if (!init_second_stage_executed && check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
+             pr_info("/system/bin/init second_stage executed\n");
+             ksu_selinux_hide_handle_second_stage();
+-            apply_kernelsu_rules();
++            /*
++             * Inject the ksu domain / ksu_file type into the live SELinux
++             * policy (policy is loaded by init's first stage, so this is
++             * safe to run now). When injection succeeds SELinux stays
++             * enforcing; only fall back to permissive if it failed.
++             */
++            if (!apply_kernelsu_rules()) {
++                pr_info("KernelSU: policy injection failed, falling back to permissive\n");
++                setenforce(false);
++            }
+             cache_sid();
+             setup_ksu_cred();
+             init_second_stage_executed = true;
+diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
+index 762a7c55..a8852e0a 100644
+--- a/kernel/selinux/rules.c
++++ b/kernel/selinux/rules.c
+@@ -6,6 +6,7 @@
+ #include <linux/lockdep.h>
+ #include <linux/slab.h>
+ #include <linux/string.h>
++#include <linux/spinlock.h>
+ 
+ #include "uapi/selinux.h"
+ #include "klog.h" // IWYU pragma: keep
+@@ -15,7 +16,11 @@
+ #include "linux/lsm_audit.h" // IWYU pragma: keep
+ #include "xfrm.h"
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0)
++struct selinux_ss *backup_sepolicy;
++#else
+ struct selinux_policy *backup_sepolicy;
++#endif
+ 
+ #define SELINUX_POLICY_INSTEAD_SELINUX_SS
+ 
+@@ -42,10 +47,12 @@ static void reset_avc_cache()
+     selinux_xfrm_notify_policyload();
+ }
+ 
+-void apply_kernelsu_rules()
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)
++bool apply_kernelsu_rules()
+ {
+     struct selinux_policy *pol, *old_pol = selinux_state.policy;
+     struct policydb *db;
++    bool success = true;
+ 
+     if (!getenforce()) {
+         pr_info("SELinux permissive or disabled, apply rules!\n");
+@@ -78,19 +85,20 @@ void apply_kernelsu_rules()
+     pol = ksu_dup_sepolicy(rcu_dereference_protected(old_pol, lockdep_is_held(&selinux_state.policy_mutex)));
+     if (IS_ERR(pol)) {
+         pr_err("failed to dup selinux_policy: %ld\n", PTR_ERR(pol));
++        success = false;
+         goto out_unlock;
+     }
+ 
+     db = &pol->policydb;
+ 
+-    ksu_type(db, KERNEL_SU_DOMAIN, "domain");
+-    ksu_permissive(db, KERNEL_SU_DOMAIN);
++    success &= ksu_type(db, KERNEL_SU_DOMAIN, "domain");
++    success &= ksu_permissive(db, KERNEL_SU_DOMAIN);
+     ksu_typeattribute(db, KERNEL_SU_DOMAIN, "mlstrustedsubject");
+     ksu_typeattribute(db, KERNEL_SU_DOMAIN, "netdomain");
+     ksu_typeattribute(db, KERNEL_SU_DOMAIN, "bluetoothdomain");
+ 
+     // Create unconstrained file type
+-    ksu_type(db, KERNEL_SU_FILE, "file_type");
++    success &= ksu_type(db, KERNEL_SU_FILE, "file_type");
+     ksu_typeattribute(db, KERNEL_SU_FILE, "mlstrustedobject");
+     ksu_allow(db, "domain", KERNEL_SU_FILE, ALL, ALL);
+ 
+@@ -155,14 +163,158 @@ void apply_kernelsu_rules()
+     ksu_allow(db, "system_server", KERNEL_SU_DOMAIN, "process", "getpgid");
+     ksu_allow(db, "system_server", KERNEL_SU_DOMAIN, "process", "sigkill");
+ 
++    if (!success) {
++        pr_err("KernelSU: failed to inject critical types, dropping new policy\n");
++        ksu_destroy_sepolicy(pol);
++        goto out_unlock;
++    }
++
+     rcu_assign_pointer(selinux_state.policy, pol);
+     synchronize_rcu();
+     ksu_destroy_sepolicy(old_pol);
+ 
+     reset_avc_cache();
++    pr_info("KernelSU: SELinux policy injected successfully\n");
+ out_unlock:
+     mutex_unlock(&selinux_state.policy_mutex);
++    return success;
+ }
++#else  /* LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0) */
++bool apply_kernelsu_rules()
++{
++    struct selinux_ss *ss = selinux_state.ss;
++    struct selinux_ss *new_ss;
++    struct policydb *db;
++    struct policydb old_policydb;
++    u32 seqno;
++    bool success = true;
++
++    if (!ss) {
++        pr_err("KernelSU: selinux_ss not initialized, cannot apply rules\n");
++        return false;
++    }
++
++    if (!getenforce()) {
++        pr_info("SELinux permissive or disabled, apply rules!\n");
++    }
++
++    /*
++     * Duplicate the running policy (write/read round trip) OUTSIDE the
++     * policy lock: ksu_dup_sepolicy may sleep (vmalloc/kvmalloc, policy
++     * parsing). On 4.19 there is no struct selinux_policy; the live policy
++     * lives in struct selinux_ss, which ksu_dup_sepolicy is aliased to
++     * handle (same policydb member layout).
++     */
++    new_ss = ksu_dup_sepolicy(ss);
++    if (IS_ERR(new_ss)) {
++        pr_err("failed to dup selinux_ss: %ld\n", PTR_ERR(new_ss));
++        return false;
++    }
++    db = &new_ss->policydb;
++
++    success &= ksu_type(db, KERNEL_SU_DOMAIN, "domain");
++    success &= ksu_permissive(db, KERNEL_SU_DOMAIN);
++    ksu_typeattribute(db, KERNEL_SU_DOMAIN, "mlstrustedsubject");
++    ksu_typeattribute(db, KERNEL_SU_DOMAIN, "netdomain");
++    ksu_typeattribute(db, KERNEL_SU_DOMAIN, "bluetoothdomain");
++
++    // Create unconstrained file type
++    success &= ksu_type(db, KERNEL_SU_FILE, "file_type");
++    ksu_typeattribute(db, KERNEL_SU_FILE, "mlstrustedobject");
++    ksu_allow(db, "domain", KERNEL_SU_FILE, ALL, ALL);
++
++    // allow all!
++    ksu_allow(db, KERNEL_SU_DOMAIN, ALL, ALL, ALL);
++
++    // allow us do any ioctl
++    if (db->policyvers >= POLICYDB_VERSION_XPERMS_IOCTL) {
++        ksu_allowxperm(db, KERNEL_SU_DOMAIN, ALL, "blk_file", ALL);
++        ksu_allowxperm(db, KERNEL_SU_DOMAIN, ALL, "fifo_file", ALL);
++        ksu_allowxperm(db, KERNEL_SU_DOMAIN, ALL, "chr_file", ALL);
++        ksu_allowxperm(db, KERNEL_SU_DOMAIN, ALL, "file", ALL);
++    }
++
++    // our ksud triggered by init
++    ksu_allow(db, "init", KERNEL_SU_DOMAIN, ALL, ALL);
++
++    // copied from Magisk rules
++    // suRights
++    ksu_allow(db, "servicemanager", KERNEL_SU_DOMAIN, "dir", "search");
++    ksu_allow(db, "servicemanager", KERNEL_SU_DOMAIN, "dir", "read");
++    ksu_allow(db, "servicemanager", KERNEL_SU_DOMAIN, "file", "open");
++    ksu_allow(db, "servicemanager", KERNEL_SU_DOMAIN, "file", "read");
++    ksu_allow(db, "servicemanager", KERNEL_SU_DOMAIN, "process", "getattr");
++    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "process", "sigchld");
++
++    // allowLog
++    ksu_allow(db, "logd", KERNEL_SU_DOMAIN, "dir", "search");
++    ksu_allow(db, "logd", KERNEL_SU_DOMAIN, "file", "read");
++    ksu_allow(db, "logd", KERNEL_SU_DOMAIN, "file", "open");
++    ksu_allow(db, "logd", KERNEL_SU_DOMAIN, "file", "getattr");
++
++    // dumpsys, send fd
++    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "fd", "use");
++    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "fifo_file", "write");
++    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "fifo_file", "read");
++    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "fifo_file", "open");
++    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "fifo_file", "getattr");
++    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "unix_stream_socket", "read");
++    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "unix_stream_socket", "write");
++    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "unix_stream_socket", "connectto");
++    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "unix_stream_socket", "getopt");
++    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "unix_stream_socket", "getattr");
++
++    // use memfd created by su domain
++    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "execute");
++    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "getattr");
++    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "map");
++    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "read");
++    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "write");
++
++    // bootctl
++    ksu_allow(db, "hwservicemanager", KERNEL_SU_DOMAIN, "dir", "search");
++    ksu_allow(db, "hwservicemanager", KERNEL_SU_DOMAIN, "file", "read");
++    ksu_allow(db, "hwservicemanager", KERNEL_SU_DOMAIN, "file", "open");
++    ksu_allow(db, "hwservicemanager", KERNEL_SU_DOMAIN, "process", "getattr");
++
++    // Allow all binder transactions
++    ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "binder", ALL);
++
++    // Allow system server kill su process
++    ksu_allow(db, "system_server", KERNEL_SU_DOMAIN, "process", "getpgid");
++    ksu_allow(db, "system_server", KERNEL_SU_DOMAIN, "process", "sigkill");
++
++    if (!success) {
++        pr_err("KernelSU: failed to inject critical types, dropping new policy\n");
++        ksu_destroy_sepolicy(new_ss);
++        return false;
++    }
++
++    /*
++     * Install the new policydb in place under the policy write lock.
++     * 4.19 SELinux readers take read_lock(&ss->policy_rwlock) and access
++     * ss->policydb directly (no RCU dereference of a policy pointer), so a
++     * pointer swap like on 5.x would race with those readers. The read/write
++     * lock excludes them while the memcpy runs; mirror security_load_policy().
++     */
++    write_lock_irq(&ss->policy_rwlock);
++    memcpy(&old_policydb, &ss->policydb, sizeof(old_policydb));
++    memcpy(&ss->policydb, db, sizeof(*db));
++    seqno = ++ss->latest_granting;
++    write_unlock_irq(&ss->policy_rwlock);
++
++    policydb_destroy(&old_policydb);
++    kfree(new_ss);
++
++    avc_ss_reset(selinux_state.avc, seqno);
++    selnl_notify_policyload(seqno);
++    selinux_status_update_policyload(&selinux_state, seqno);
++    selinux_xfrm_notify_policyload();
++
++    pr_info("KernelSU: SELinux policy injected successfully on 4.19\n");
++    return true;
++}
++#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0) */
+ 
+ #define KSU_SEPOLICY_MAX_BATCH_SIZE (8U * 1024U * 1024U)
+ #define KSU_SEPOLICY_MAX_ARGS 5
+@@ -429,6 +581,7 @@ static int apply_one_sepolicy_cmd(struct policydb *db, const struct sepol_data *
+     }
+ }
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)
+ int handle_sepolicy(void __user *user_data, u64 data_len)
+ {
+     struct selinux_policy *pol, *old_pol;
+@@ -531,3 +684,12 @@ out_free:
+ 
+     return ret;
+ }
++#else  /* LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0) */
++int handle_sepolicy(void __user *user_data, u64 data_len)
++{
++    pr_info("KernelSU: SELinux policy injection not supported on 4.19 non-GKI kernel\n");
++    (void)user_data;
++    (void)data_len;
++    return -EOPNOTSUPP;
++}
++#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0) */
+diff --git a/kernel/selinux/selinux.h b/kernel/selinux/selinux.h
+index a17ed226..520f13f7 100644
+--- a/kernel/selinux/selinux.h
++++ b/kernel/selinux/selinux.h
+@@ -29,7 +29,9 @@ bool is_zygote(const struct cred *cred);
+ 
+ bool is_init(const struct cred *cred);
+ 
+-void apply_kernelsu_rules();
++// Returns true if the ksu domain / ksu_file type were injected successfully
++// (i.e. SELinux can stay enforcing), false otherwise.
++bool apply_kernelsu_rules();
+ 
+ int handle_sepolicy(void __user *user_data, u64 data_len);
+ 
+diff --git a/kernel/selinux/sepolicy.c b/kernel/selinux/sepolicy.c
+index d17d219b..332e5ff1 100644
+--- a/kernel/selinux/sepolicy.c
++++ b/kernel/selinux/sepolicy.c
+@@ -4,6 +4,7 @@
+ #include "ss/hashtab.h"
+ #include "ss/policydb.h"
+ #include "ss/services.h"
++#include <linux/flex_array.h>
+ #include <linux/gfp.h>
+ #include <linux/printk.h>
+ #include <linux/slab.h>
+@@ -83,6 +84,16 @@ static bool add_typeattribute(struct policydb *db, const char *type, const char
+ 
+ #define avtab_for_each(avtab, cur) ksu_hash_for_each(avtab.htable, avtab.nslot, cur);
+ 
++// On 4.19 (< 5.7), struct avtab.htable is a `struct flex_array *` holding
++// `struct avtab_node *` pointers; on 5.x it is a plain `struct avtab_node **`.
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0)
++#define ksu_avtab_slot(avtab_ptr, i) flex_array_get_ptr((avtab_ptr)->htable, (i))
++#define ksu_avtab_set_slot(avtab_ptr, i, val) flex_array_put_ptr((avtab_ptr)->htable, (i), (val), GFP_KERNEL)
++#else
++#define ksu_avtab_slot(avtab_ptr, i) ((avtab_ptr)->htable[i])
++#define ksu_avtab_set_slot(avtab_ptr, i, val) ((avtab_ptr)->htable[i] = (val))
++#endif
++
+ static struct avtab_node *get_avtab_node(struct policydb *db, struct avtab_key *key,
+                                          struct avtab_extended_perms *xperms)
+ {
+@@ -161,14 +172,14 @@ static bool remove_avtab_node(struct policydb *db, struct avtab_node *node)
+ 
+     for (i = 0; i < db->te_avtab.nslot; i++) {
+         prev = NULL;
+-        for (n = db->te_avtab.htable[i]; n; prev = n, n = n->next) {
++        for (n = ksu_avtab_slot(&db->te_avtab, i); n; prev = n, n = n->next) {
+             if (n != node)
+                 continue;
+ 
+             if (prev)
+                 prev->next = n->next;
+             else
+-                db->te_avtab.htable[i] = n->next;
++                ksu_avtab_set_slot(&db->te_avtab, i, n->next);
+ 
+             if (db->te_avtab.nel > 0)
+                 db->te_avtab.nel--;
+@@ -177,7 +188,7 @@ static bool remove_avtab_node(struct policydb *db, struct avtab_node *node)
+                 shrink_size += sizeof(u8) + sizeof(u8) + sizeof(u32) * ARRAY_SIZE(n->datum.u.xperms->perms.p);
+             }
+             n->next = NULL;
+-            removed.htable[0] = n;
++            ksu_avtab_set_slot(&removed, 0, n);
+             removed.nel = 1;
+             avtab_destroy(&removed);
+             if (db->len >= shrink_size)
+@@ -537,6 +548,7 @@ static const struct hashtab_key_params filenametr_key_params = {
+ };
+ #endif
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
+ static bool add_filename_trans(struct policydb *db, const char *s, const char *t, const char *c, const char *d,
+                                const char *o)
+ {
+@@ -625,6 +637,17 @@ out:
+     return false;
+ }
+ 
++#else /* LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0) */
++static bool add_filename_trans(struct policydb *db, const char *s, const char *t, const char *c, const char *d,
++                               const char *o)
++{
++    // filename_trans_key/datum, policydb_filenametr_search, compat_filename_trans_count
++    // and the 4-arg hashtab_insert signature are all 5.9+ APIs. Stubbed on 4.19.
++    pr_info("add_filename_trans not supported on this kernel version\n");
++    return false;
++}
++#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0) */
++
+ static bool add_genfscon(struct policydb *db, const char *fs_name, const char *path, const char *context)
+ {
+     return false;
+@@ -655,6 +678,7 @@ void *ksu_kvrealloc_compat(const void *p, size_t oldsize, size_t newsize, gfp_t
+ #define ksu_kvrealloc(p, new_size, old_size) ksu_kvrealloc_compat(p, old_size, new_size, GFP_KERNEL)
+ #endif
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)
+ static bool add_type(struct policydb *db, const char *type_name, bool attr)
+ {
+     struct type_datum *type = symtab_search(&db->p_types, type_name);
+@@ -725,6 +749,104 @@ static bool add_type(struct policydb *db, const char *type_name, bool attr)
+ 
+     return true;
+ }
++#else /* LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0) */
++static bool add_type(struct policydb *db, const char *type_name, bool attr)
++{
++    struct type_datum *type = symtab_search(&db->p_types, type_name);
++    if (type) {
++        pr_warn("Type %s already exists\n", type_name);
++        return true;
++    }
++
++    u32 value = ++db->p_types.nprim;
++    type = (struct type_datum *)kzalloc(sizeof(struct type_datum), GFP_KERNEL);
++    if (!type) {
++        pr_err("add_type: alloc type_datum failed.\n");
++        --db->p_types.nprim;
++        return false;
++    }
++
++    type->primary = 1;
++    type->value = value;
++    type->attribute = attr;
++
++    char *key = kstrdup(type_name, GFP_KERNEL);
++    if (!key) {
++        pr_err("add_type: alloc key failed.\n");
++        kfree(type);
++        --db->p_types.nprim;
++        return false;
++    }
++
++    if (symtab_insert(&db->p_types, key, type)) {
++        pr_err("add_type: insert symtab failed.\n");
++        kfree(type);
++        kfree(key);
++        --db->p_types.nprim;
++        return false;
++    }
++
++    /*
++     * 4.19 stores type_attr_map_array / type_val_to_struct_array /
++     * sym_val_to_name as struct flex_array * with a fixed capacity set at
++     * policy load time. flex_array_prealloc() refuses to go beyond
++     * total_nr_elements, so grow that first, then preallocate the backing
++     * part page and fill the new slot.
++     */
++    struct flex_array *fa;
++
++    fa = db->type_attr_map_array;
++    if (fa->total_nr_elements < (int)value) {
++        fa->total_nr_elements = value;
++        if (flex_array_prealloc(fa, value - 1, 1, GFP_KERNEL | __GFP_ZERO)) {
++            pr_err("add_type: grow type_attr_map_array failed\n");
++            return false;
++        }
++    }
++    struct ebitmap *map = flex_array_get(fa, value - 1);
++    if (!map) {
++        pr_err("add_type: get type_attr_map_array entry failed\n");
++        return false;
++    }
++    ebitmap_init(map);
++    ebitmap_set_bit(map, value - 1, 1);
++
++    fa = db->type_val_to_struct_array;
++    if (fa->total_nr_elements < (int)value) {
++        fa->total_nr_elements = value;
++        if (flex_array_prealloc(fa, value - 1, 1, GFP_KERNEL)) {
++            pr_err("add_type: grow type_val_to_struct_array failed\n");
++            return false;
++        }
++    }
++    if (flex_array_put(fa, value - 1, &type, GFP_KERNEL)) {
++        pr_err("add_type: put type_val_to_struct_array failed\n");
++        return false;
++    }
++
++    fa = db->sym_val_to_name[SYM_TYPES];
++    if (fa->total_nr_elements < (int)value) {
++        fa->total_nr_elements = value;
++        if (flex_array_prealloc(fa, value - 1, 1, GFP_KERNEL)) {
++            pr_err("add_type: grow sym_val_to_name failed\n");
++            return false;
++        }
++    }
++    if (flex_array_put(fa, value - 1, &key, GFP_KERNEL)) {
++        pr_err("add_type: put sym_val_to_name failed\n");
++        return false;
++    }
++
++    /* The new type must be authorized for every role (role_val_to_struct
++     * is a plain pointer array on 4.19). */
++    int i;
++    for (i = 0; i < db->p_roles.nprim; ++i) {
++        ebitmap_set_bit(&db->role_val_to_struct[i]->types, value - 1, 1);
++    }
++
++    return true;
++}
++#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0) */
+ 
+ static bool set_type_state(struct policydb *db, const char *type_name, bool permissive)
+ {
+@@ -753,7 +875,12 @@ static bool set_type_state(struct policydb *db, const char *type_name, bool perm
+ 
+ static void add_typeattribute_raw(struct policydb *db, struct type_datum *type, struct type_datum *attr)
+ {
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0)
++    // 4.19: type_attr_map_array is a struct flex_array * of struct ebitmap.
++    struct ebitmap *sattr = (struct ebitmap *)flex_array_get(db->type_attr_map_array, type->value - 1);
++#else
+     struct ebitmap *sattr = &db->type_attr_map_array[type->value - 1];
++#endif
+     ebitmap_set_bit(sattr, attr->value - 1, 1);
+ 
+     struct hashtab_node *node;
+@@ -936,10 +1063,14 @@ struct selinux_policy *ksu_dup_sepolicy(struct selinux_policy *old_pol)
+             pr_info("adding POLICYDB_CONFIG_ANDROID_NETLINK_ROUTE\n");
+             *config_ptr |= POLICYDB_CONFIG_ANDROID_NETLINK_ROUTE;
+         }
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)
++        // android_netlink_getneigh field and POLICYDB_CONFIG_ANDROID_NETLINK_GETNEIGH
++        // are not present in struct policydb on 4.19.
+         if (old_pol->policydb.android_netlink_getneigh) {
+             pr_info("adding POLICYDB_CONFIG_ANDROID_NETLINK_GETNEIGH\n");
+             *config_ptr |= POLICYDB_CONFIG_ANDROID_NETLINK_GETNEIGH;
+         }
++#endif
+         pr_info("new config: %u\n", *config_ptr);
+     }
+ 
+diff --git a/kernel/selinux/sepolicy.h b/kernel/selinux/sepolicy.h
+index ed85b93d..556d0d9a 100644
+--- a/kernel/selinux/sepolicy.h
++++ b/kernel/selinux/sepolicy.h
+@@ -2,9 +2,18 @@
+ #define __KSU_H_SEPOLICY
+ 
+ #include <linux/types.h>
++#include <linux/version.h>
+ 
+ #include "ss/policydb.h"
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0)
++/* On 4.19 there is no struct selinux_policy; the live policy is held in
++ * struct selinux_ss (which has the same `policydb` member layout that
++ * ksu_dup_sepolicy/ksu_destroy_sepolicy dereference). Map the type name so
++ * both sepolicy.c and rules.c share one consistent declaration. */
++#define selinux_policy selinux_ss
++#endif
++
+ struct selinux_policy *ksu_dup_sepolicy(struct selinux_policy *old_pol);
+ 
+ void ksu_destroy_sepolicy(struct selinux_policy *orig);
+diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
+index 68c333f1..af14a576 100644
+--- a/kernel/supercall/dispatch.c
++++ b/kernel/supercall/dispatch.c
+@@ -4,6 +4,10 @@
+ #include <linux/uaccess.h>
+ #include <linux/version.h>
+ #include <linux/thread_info.h>
++#include <linux/pid.h>
++#include <linux/sched.h>
++#include <linux/sched/signal.h>
++#include <linux/sched/task.h>
+ #include "uapi/supercall.h"
+ #include "supercall/internal.h"
+ #include "arch.h" // IWYU pragma: keep
