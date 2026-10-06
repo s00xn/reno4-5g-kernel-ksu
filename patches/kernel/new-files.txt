@@ -1,0 +1,8 @@
+# 该补丁新增的文件（相对内核树根，按原路径拷入）：
+arch/arm64/configs/vendor/stock_lito_defconfig
+include/linux/minmax.h
+include/linux/pgtable.h
+include/uapi/linux/mount.h
+
+# 另有一个软链接由 scripts/prepare-kernelsu.sh 创建：
+#   drivers/kernelsu -> ../KernelSU/kernel

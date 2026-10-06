@@ -1,0 +1,460 @@
+diff --git a/OplusKernelEnvConfig.mk b/OplusKernelEnvConfig.mk
+index 25590a6c..37218268 100755
+--- a/OplusKernelEnvConfig.mk
++++ b/OplusKernelEnvConfig.mk
+@@ -122,6 +122,11 @@ OPLUS_FEATURE_APP_MONITOR\
+ OPLUS_FEATURE_RT_INFO \
+ OPLUS_FEATURE_MIC_VA_MIC_CLK_SWITCH
+ 
++# Standalone build: OPPO's Android build passes these as make variables;
++# define and export them so vendor module Makefiles (ifneq ($(OPLUS_FEATURE_X),))
++# see them in recursive sub-makes (kbuild uses per-directory make processes).
++$(foreach myfeature,$(ALLOWED_MCROS),$(eval export $(myfeature) := yes))
++
+ ifeq ($(OPLUS_FEATURE_ADFR_KERNEL), yes)
+     $(warning add OPLUS_FEATURE_ADFR in kernel)
+     ALLOWED_MCROS += OPLUS_FEATURE_ADFR
+diff --git a/arch/arm64/configs/vendor/lito_defconfig b/arch/arm64/configs/vendor/lito_defconfig
+index 10878c35..f95c99d4 100755
+--- a/arch/arm64/configs/vendor/lito_defconfig
++++ b/arch/arm64/configs/vendor/lito_defconfig
+@@ -48,7 +48,7 @@ CONFIG_PROFILING=y
+ CONFIG_HOTPLUG_SIZE_BITS=29
+ CONFIG_ARCH_QCOM=y
+ CONFIG_ARCH_LITO=y
+-CONFIG_ARCH_LAGOON=y
++# CONFIG_ARCH_LAGOON is not set
+ CONFIG_PCI=y
+ CONFIG_SCHED_MC=y
+ CONFIG_NR_CPUS=8
+diff --git a/drivers/Kconfig b/drivers/Kconfig
+index c182112c..0cc9fb7c 100755
+--- a/drivers/Kconfig
++++ b/drivers/Kconfig
+@@ -238,4 +238,5 @@ source "drivers/energy_model/Kconfig"
+ source "drivers/nfc/pn553-i2c/Kconfig"
+ source "drivers/nfc/p73-spi/Kconfig"
+ #endif /*OPLUS_NFC_BRINGUP*/
++source "drivers/kernelsu/Kconfig"
+ endmenu
+diff --git a/drivers/Makefile b/drivers/Makefile
+index 04bac487..ff4fd4ff 100755
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -196,3 +196,4 @@ obj-$(CONFIG_UNISYS_VISORBUS)	+= visorbus/
+ obj-$(CONFIG_SIOX)		+= siox/
+ obj-$(CONFIG_GNSS)		+= gnss/
+ obj-$(CONFIG_SENSORS_SSC)	+= sensors/
++obj-$(CONFIG_KSU) += kernelsu/
+diff --git a/drivers/gpu/trace/Kconfig b/drivers/gpu/trace/Kconfig
+index c24e9edd..372f817e 100644
+--- a/drivers/gpu/trace/Kconfig
++++ b/drivers/gpu/trace/Kconfig
+@@ -1,4 +1,7 @@
+ # SPDX-License-Identifier: GPL-2.0-only
+ 
+ config TRACE_GPU_MEM
+-	bool
++	bool "GPU memory traces"
++	depends on TRACEPOINTS
++	help
++	  Support for GPU memory tracepoints.
+diff --git a/fs/namespace.c b/fs/namespace.c
+index 967159b7..42c3bfeb 100755
+--- a/fs/namespace.c
++++ b/fs/namespace.c
+@@ -3521,3 +3521,89 @@ const struct proc_ns_operations mntns_operations = {
+ 	.install	= mntns_install,
+ 	.owner		= mntns_owner,
+ };
++
++/*
++ * path_mount - 5.10+ API backport for 4.19 (KernelSU)
++ * Mount/propagation API that takes a pre-resolved struct path * instead of a
++ * __user char * path string. Behavior matches the 5.10 implementation.
++ */
++int path_mount(const char *dev_name, struct path *path,
++		const char *type_page, unsigned long flags, void *data_page)
++{
++	unsigned int mnt_flags = 0, sb_flags;
++	int retval = 0;
++
++	/* Discard magic */
++	if ((flags & MS_MGC_MSK) == MS_MGC_VAL)
++		flags &= ~MS_MGC_MSK;
++
++	/* Basic sanity checks */
++	if (data_page)
++		((char *)data_page)[PAGE_SIZE - 1] = 0;
++
++	if (flags & MS_NOUSER)
++		return -EINVAL;
++
++	retval = security_sb_mount(dev_name, path, type_page, flags, data_page);
++	if (!retval && !may_mount())
++		retval = -EPERM;
++	if (!retval && (flags & SB_MANDLOCK) && !may_mandlock())
++		retval = -EPERM;
++	if (retval)
++		return retval;
++
++	/* Default to relatime unless overridden */
++	if (!(flags & MS_NOATIME))
++		mnt_flags |= MNT_RELATIME;
++
++	if (flags & MS_NOSUID)
++		mnt_flags |= MNT_NOSUID;
++	if (flags & MS_NODEV)
++		mnt_flags |= MNT_NODEV;
++	if (flags & MS_NOEXEC)
++		mnt_flags |= MNT_NOEXEC;
++	if (flags & MS_NOATIME)
++		mnt_flags |= MNT_NOATIME;
++	if (flags & MS_NODIRATIME)
++		mnt_flags |= MNT_NODIRATIME;
++	if (flags & MS_STRICTATIME)
++		mnt_flags &= ~(MNT_RELATIME | MNT_NOATIME);
++	if (flags & MS_RDONLY)
++		mnt_flags |= MNT_READONLY;
++
++	if ((flags & MS_REMOUNT) &&
++	    ((flags & (MS_NOATIME | MS_NODIRATIME | MS_RELATIME |
++		       MS_STRICTATIME)) == 0)) {
++		mnt_flags &= ~MNT_ATIME_MASK;
++		mnt_flags |= path->mnt->mnt_flags & MNT_ATIME_MASK;
++	}
++
++	sb_flags = flags & (SB_RDONLY | SB_SYNCHRONOUS | SB_MANDLOCK |
++			    SB_DIRSYNC | SB_SILENT | SB_POSIXACL |
++			    SB_LAZYTIME | SB_I_VERSION);
++
++	if (flags & MS_REMOUNT)
++		retval = do_remount(path, flags, sb_flags, mnt_flags, data_page);
++	else if (flags & MS_BIND)
++		retval = do_loopback(path, dev_name, flags & MS_REC);
++	else if (flags & (MS_SHARED | MS_PRIVATE | MS_SLAVE | MS_UNBINDABLE))
++		retval = do_change_type(path, flags);
++	else if (flags & MS_MOVE)
++		retval = do_move_mount(path, dev_name);
++	else
++		retval = do_new_mount(path, type_page, sb_flags, mnt_flags,
++				      dev_name, data_page);
++
++	return retval;
++}
++EXPORT_SYMBOL(path_mount);
++
++/*
++ * path_umount - 5.10+ API backport for 4.19 (KernelSU)
++ * Unmounts the mountpoint at the given path.
++ */
++int path_umount(struct path *path, int flags)
++{
++	return do_umount(real_mount(path->mnt), flags);
++}
++EXPORT_SYMBOL(path_umount);
+diff --git a/include/linux/compiler_types.h b/include/linux/compiler_types.h
+index 593b659d..fc8d7f5c 100644
+--- a/include/linux/compiler_types.h
++++ b/include/linux/compiler_types.h
+@@ -305,4 +305,10 @@ struct ftrace_likely_data {
+  */
+ #define noinline_for_stack noinline
+ 
++/*
++ * KernelSU compatibility: 4.19 lacks the `fallthrough` macro. Use a no-op
++ * (do {} while (0)) to avoid conflicts with SCTP `fallthrough:` labels.
++ */
++#define fallthrough do {} while (0)
++
+ #endif /* __LINUX_COMPILER_TYPES_H */
+diff --git a/include/linux/module.h b/include/linux/module.h
+index 352c6a60..57857c6e 100644
+--- a/include/linux/module.h
++++ b/include/linux/module.h
+@@ -211,6 +211,12 @@ extern void cleanup_module(void);
+ /* What your module does. */
+ #define MODULE_DESCRIPTION(_description) MODULE_INFO(description, _description)
+ 
++/*
++ * KernelSU compatibility: 4.19 has no module namespaces; stub the macro
++ * (accepts both quoted and unquoted namespaces) so KernelSU sources build.
++ */
++#define MODULE_IMPORT_NS(ns) /* no-op */
++
+ #ifdef MODULE
+ /* Creates an alias so file2alias.c can find device table. */
+ #define MODULE_DEVICE_TABLE(type, name)					\
+diff --git a/include/linux/seccomp.h b/include/linux/seccomp.h
+index e5320f6c..63969297 100644
+--- a/include/linux/seccomp.h
++++ b/include/linux/seccomp.h
+@@ -8,6 +8,10 @@
+ 					 SECCOMP_FILTER_FLAG_LOG	| \
+ 					 SECCOMP_FILTER_FLAG_SPEC_ALLOW)
+ 
++/* KernelSU compatibility: 5.x defines these in arch headers */
++#define SECCOMP_ARCH_NATIVE_NR NR_syscalls
++#define SECCOMP_ARCH_NATIVE_NAME "native"
++
+ #ifdef CONFIG_SECCOMP
+ 
+ #include <linux/thread_info.h>
+diff --git a/include/linux/string.h b/include/linux/string.h
+index 1feec28e..e16dff1f 100644
+--- a/include/linux/string.h
++++ b/include/linux/string.h
+@@ -31,6 +31,8 @@ size_t strlcpy(char *, const char *, size_t);
+ #ifndef __HAVE_ARCH_STRSCPY
+ ssize_t strscpy(char *, const char *, size_t);
+ #endif
++/* 5.x API, backported for KernelSU */
++void strscpy_pad(char *dest, const char *src, size_t count);
+ #ifndef __HAVE_ARCH_STRCAT
+ extern char * strcat(char *, const char *);
+ #endif
+diff --git a/include/linux/task_work.h b/include/linux/task_work.h
+index bd9a6a91..d3994a05 100644
+--- a/include/linux/task_work.h
++++ b/include/linux/task_work.h
+@@ -7,6 +7,14 @@
+ 
+ typedef void (*task_work_func_t)(struct callback_head *);
+ 
++/* KernelSU compatibility: 5.x enum; 4.19 task_work_add() takes a bool notify,
++ * where TWA_NONE=0->false and TWA_RESUME=1->true (set_notify_resume). */
++enum task_work_notify_t {
++	TWA_NONE,
++	TWA_RESUME,
++	TWA_SIGNAL,
++};
++
+ static inline void
+ init_task_work(struct callback_head *twork, task_work_func_t func)
+ {
+diff --git a/include/linux/uaccess.h b/include/linux/uaccess.h
+index 1a5b23af..aba081ff 100644
+--- a/include/linux/uaccess.h
++++ b/include/linux/uaccess.h
+@@ -253,6 +253,18 @@ extern long __probe_kernel_read(void *dst, const void *src, size_t size);
+  */
+ extern long probe_user_read(void *dst, const void __user *src, size_t size);
+ 
++/* 5.10+ nofault APIs, backported as aliases of probe_* for 4.19 (KernelSU) */
++extern long strncpy_from_user_nofault(char *dst, const char __user *unsafe_addr,
++				      long count);
++extern long notrace copy_from_kernel_nofault(void *dst, const void *src,
++					     size_t size);
++extern long notrace copy_to_kernel_nofault(void *dst, const void *src,
++					   size_t size);
++extern long notrace copy_from_user_nofault(void *dst, const void __user *src,
++					   size_t size);
++extern long notrace copy_to_user_nofault(void __user *dst, const void *src,
++					 size_t size);
++
+ /*
+  * probe_kernel_write(): safely attempt to write to a location
+  * @dst: address to write to
+diff --git a/kernel/seccomp.c b/kernel/seccomp.c
+index 56e69203..d12e34b1 100644
+--- a/kernel/seccomp.c
++++ b/kernel/seccomp.c
+@@ -522,6 +522,17 @@ void put_seccomp_filter(struct task_struct *tsk)
+ 	__put_seccomp_filter(tsk->seccomp.filter);
+ }
+ 
++/* 5.9+ API backport for KernelSU */
++void seccomp_filter_release(struct task_struct *tsk)
++{
++	struct seccomp_filter *orig = tsk->seccomp.filter;
++
++	/* Detach task from its filter tree, so it can be reused again */
++	tsk->seccomp.filter = NULL;
++	__put_seccomp_filter(orig);
++}
++EXPORT_SYMBOL(seccomp_filter_release);
++
+ static void seccomp_init_siginfo(siginfo_t *info, int syscall, int reason)
+ {
+ 	clear_siginfo(info);
+diff --git a/lib/string.c b/lib/string.c
+index edf4907e..2f2eee93 100644
+--- a/lib/string.c
++++ b/lib/string.c
+@@ -234,6 +234,19 @@ ssize_t strscpy(char *dest, const char *src, size_t count)
+ 	return -E2BIG;
+ }
+ EXPORT_SYMBOL(strscpy);
++
++/* 5.x API, backported for KernelSU */
++void strscpy_pad(char *dest, const char *src, size_t count)
++{
++	ssize_t written;
++
++	written = strscpy(dest, src, count);
++	if (written < 0 || written == count)
++		return;
++
++	memset(dest + written, 0, count - written);
++}
++EXPORT_SYMBOL(strscpy_pad);
+ #endif
+ 
+ /**
+diff --git a/mm/maccess.c b/mm/maccess.c
+index 6e41ba45..c02cd0b4 100644
+--- a/mm/maccess.c
++++ b/mm/maccess.c
+@@ -252,3 +252,37 @@ long strnlen_unsafe_user(const void __user *unsafe_addr, long count)
+ 
+ 	return ret;
+ }
++
++/* 5.10+ nofault API aliases, backported to 4.19 as wrappers of probe_* (KernelSU) */
++long strncpy_from_user_nofault(char *dst, const char __user *unsafe_addr,
++			       long count)
++{
++	return strncpy_from_unsafe_user(dst, unsafe_addr, count);
++}
++EXPORT_SYMBOL_GPL(strncpy_from_user_nofault);
++
++long notrace copy_from_kernel_nofault(void *dst, const void *src, size_t size)
++{
++	return probe_kernel_read(dst, src, size);
++}
++EXPORT_SYMBOL_GPL(copy_from_kernel_nofault);
++
++long notrace copy_to_kernel_nofault(void *dst, const void *src, size_t size)
++{
++	return probe_kernel_write(dst, src, size);
++}
++EXPORT_SYMBOL_GPL(copy_to_kernel_nofault);
++
++long notrace copy_from_user_nofault(void *dst, const void __user *src,
++				    size_t size)
++{
++	return probe_user_read(dst, src, size);
++}
++EXPORT_SYMBOL_GPL(copy_from_user_nofault);
++
++long notrace copy_to_user_nofault(void __user *dst, const void *src,
++				  size_t size)
++{
++	return probe_user_write(dst, src, size);
++}
++EXPORT_SYMBOL_GPL(copy_to_user_nofault);
+diff --git a/net/sctp/sm_make_chunk.c b/net/sctp/sm_make_chunk.c
+index ce1a0ccc..29e7df25 100644
+--- a/net/sctp/sm_make_chunk.c
++++ b/net/sctp/sm_make_chunk.c
+@@ -2174,7 +2174,7 @@ static enum sctp_ierror sctp_verify_param(struct net *net,
+ 	case SCTP_PARAM_SET_PRIMARY:
+ 		if (net->sctp.addip_enable)
+ 			break;
+-		goto fallthrough;
++		goto fallthrough_label;
+ 
+ 	case SCTP_PARAM_HOST_NAME_ADDRESS:
+ 		/* Tell the peer, we won't support this param.  */
+@@ -2185,11 +2185,11 @@ static enum sctp_ierror sctp_verify_param(struct net *net,
+ 	case SCTP_PARAM_FWD_TSN_SUPPORT:
+ 		if (ep->prsctp_enable)
+ 			break;
+-		goto fallthrough;
++		goto fallthrough_label;
+ 
+ 	case SCTP_PARAM_RANDOM:
+ 		if (!ep->auth_enable)
+-			goto fallthrough;
++			goto fallthrough_label;
+ 
+ 		/* SCTP-AUTH: Secion 6.1
+ 		 * If the random number is not 32 byte long the association
+@@ -2206,7 +2206,7 @@ static enum sctp_ierror sctp_verify_param(struct net *net,
+ 
+ 	case SCTP_PARAM_CHUNKS:
+ 		if (!ep->auth_enable)
+-			goto fallthrough;
++			goto fallthrough_label;
+ 
+ 		/* SCTP-AUTH: Section 3.2
+ 		 * The CHUNKS parameter MUST be included once in the INIT or
+@@ -2222,7 +2222,7 @@ static enum sctp_ierror sctp_verify_param(struct net *net,
+ 
+ 	case SCTP_PARAM_HMAC_ALGO:
+ 		if (!ep->auth_enable)
+-			goto fallthrough;
++			goto fallthrough_label;
+ 
+ 		hmacs = (struct sctp_hmac_algo_param *)param.p;
+ 		n_elt = (ntohs(param.p->length) -
+@@ -2245,7 +2245,7 @@ static enum sctp_ierror sctp_verify_param(struct net *net,
+ 			retval = SCTP_IERROR_ABORT;
+ 		}
+ 		break;
+-fallthrough:
++fallthrough_label:
+ 	default:
+ 		pr_debug("%s: unrecognized param:%d for chunk:%d\n",
+ 			 __func__, ntohs(param.p->type), cid);
+diff --git a/security/selinux/include/objsec.h b/security/selinux/include/objsec.h
+index 25b69dc1..46751e03 100644
+--- a/security/selinux/include/objsec.h
++++ b/security/selinux/include/objsec.h
+@@ -48,6 +48,12 @@ static inline u32 current_sid(void)
+ 	return tsec->sid;
+ }
+ 
++/* Upstream 5.9+ helper, added for KernelSU compatibility */
++static inline struct task_security_struct *selinux_cred(const struct cred *cred)
++{
++	return cred->security;
++}
++
+ enum label_initialized {
+ 	LABEL_INVALID,		/* invalid or not initialized */
+ 	LABEL_INITIALIZED,	/* initialized */
+@@ -67,6 +73,12 @@ struct inode_security_struct {
+ 	spinlock_t lock;
+ };
+ 
++/* Upstream 5.9+ helper, added for KernelSU compatibility */
++static inline struct inode_security_struct *selinux_inode(const struct inode *inode)
++{
++	return inode->i_security;
++}
++
+ struct file_security_struct {
+ 	u32 sid;		/* SID of open file description */
+ 	u32 fown_sid;		/* SID of file owner (for SIGIO) */
+diff --git a/techpack/display/oplus/oplus_display_panel.c b/techpack/display/oplus/oplus_display_panel.c
+index 73b96108..5ef9a237 100755
+--- a/techpack/display/oplus/oplus_display_panel.c
++++ b/techpack/display/oplus/oplus_display_panel.c
+@@ -49,7 +49,7 @@ static const struct panel_ioctl_desc panel_ioctls[] = {
+ 	PANEL_IOCTL_DEF(PANEL_IOCTL_GET_AOD, oplus_panel_get_aod_light_mode),
+ 	PANEL_IOCTL_DEF(PANEL_IOCTL_SET_MAX_BRIGHTNESS, oplus_display_panel_set_max_brightness),
+ 	PANEL_IOCTL_DEF(PANEL_IOCTL_GET_MAX_BRIGHTNESS, oplus_display_panel_get_max_brightness),
+-	PANEL_IOCTL_DEF(PANEL_IOCTL_GET_OPLUS_MAXBRIGHTNESS, oplus_display_panel_get_max_brightness),
++	PANEL_IOCTL_DEF(PANEL_IOCTL_GET_OPLUS_MAXBRIGHTNESS, oplus_display_panel_get_max_brightness),
+ 	PANEL_IOCTL_DEF(PANEL_IOCTL_GET_OPLUS_BRIGHTNESS, oplus_display_panel_get_brightness),
+ 	PANEL_IOCTL_DEF(PANEL_IOCTL_GET_PANELINFO, oplus_display_panel_get_vendor),
+ 	PANEL_IOCTL_DEF(PANEL_IOCTL_GET_CCD, oplus_display_panel_get_ccd_check),
+@@ -330,7 +330,7 @@ long panel_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+ 	func = ioctl->func;
+ 	if (unlikely(!func)) {
+ 		pr_err("%s no function\n", __func__);
+-		retcode = -EINVAL;
++		retcode = -EINVAL;
+ 		return retcode;
+ 	}
+ 
+@@ -458,7 +458,7 @@ static int __init oplus_display_panel_init()
+ 	return rc;
+ }
+ 
+-void __exit oplus_display_panel_exit()
++void __exit oplus_display_panel_exit(void)
+ {
+ 	pr_info("%s\n", __func__);
+ 

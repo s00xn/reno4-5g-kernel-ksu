@@ -1,0 +1,24 @@
+diff --git a/.gitignore b/.gitignore
+index 88af7721..145b2ec6 100755
+--- a/.gitignore
++++ b/.gitignore
+@@ -140,7 +140,7 @@ kernel/configs/android-*.cfg
+ arch/arm64/boot/dts/vendor/
+ 
+ # Tech package directories
+-techpack/
++techpack/*
+ 
+ # ln the wakelock_profiler
+ drivers/soc/oplus/owakelock
+diff --git a/techpack/.gitignore b/techpack/.gitignore
+index 67824328..70bfcf6f 100644
+--- a/techpack/.gitignore
++++ b/techpack/.gitignore
+@@ -1,3 +1,6 @@
+ # SPDX-License-Identifier: GPL-2.0-only
+ # ignore all subdirs except stub
+ !/stub/
++!/camera/
++!/display/
++!/video/
