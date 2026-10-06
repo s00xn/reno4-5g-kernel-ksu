@@ -1,0 +1,20 @@
+# 由 scripts/prepare-tree.sh 克隆进来的官方源码树（不入库）
+/kernel/
+/vendor/
+/.modules-src/
+/toolchain/
+/build/
+
+# 构建产物与本地文件
+/out/
+*.img
+*.zip
+*.log
+*.o
+*.ko
+*.tar.gz
+*.tar
+local/
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,15 @@
+本仓库（OPPO Reno4 5G / SM7250 "lito" 内核发行版）中由本项目新增或修改的部分
+—— 包括 scripts/、docs/、README.md、NOTICE.md、SOURCE.md、base/ 以及 patches/ 中的改动
+—— 以 GNU General Public License version 2 only (GPL-2.0-only) 发布。
+
+    SPDX-License-Identifier: GPL-2.0-only
+
+这些改动应用于 GPL-2.0-only 的 Linux 内核树（OPPO 官方开源内核）与 vendor 树，因此
+以相同许可发布；各上游文件保留其原始版权与许可声明。
+
+GPL-2.0 完整文本见上游内核树中的 COPYING 文件：
+  https://github.com/oppo-source/android_kernel_oppo_sm7250  (COPYING)
+
+第三方组件（KernelSU、AnyKernel3、工具链等）的许可与来源见 NOTICE.md。
+
+本程序按"现状"提供，不附带任何担保。
