@@ -1,0 +1,286 @@
+diff --git a/oplus/kernel/system/misc/bootloader_log.c b/oplus/kernel/system/misc/bootloader_log.c
+index 85890bb..d6d808c 100755
+--- a/oplus/kernel/system/misc/bootloader_log.c
++++ b/oplus/kernel/system/misc/bootloader_log.c
+@@ -68,7 +68,7 @@ static int proc_bootloader_log_init(void)
+ }
+ 
+ 
+-static int __init of_bootloader_log_platform_data(struct device_node *node,
++static int of_bootloader_log_platform_data(struct device_node *node,
+ 	struct bootloader_log_platform_data *pdata)
+ {
+ 	const u32 *addr;
+diff --git a/oplus/kernel/touchpanel/oplus_touchscreen/touchpanel_common_driver.c b/oplus/kernel/touchpanel/oplus_touchscreen/touchpanel_common_driver.c
+index 7fdeba3..35ebc7d 100755
+--- a/oplus/kernel/touchpanel/oplus_touchscreen/touchpanel_common_driver.c
++++ b/oplus/kernel/touchpanel/oplus_touchscreen/touchpanel_common_driver.c
+@@ -1670,7 +1670,7 @@ void tp_gpio_current_leakage_handler(bool normal)
+ }
+ EXPORT_SYMBOL(tp_gpio_current_leakage_handler);
+ 
+-bool tp_boot_mode_normal()
++bool tp_boot_mode_normal(void)
+ {
+     if (!g_tp) {
+         return false;
+diff --git a/qcom/proprietary/devicetree-4.19/19065/Makefile b/qcom/proprietary/devicetree-4.19/19065/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/19065/Makefile
++++ b/qcom/proprietary/devicetree-4.19/19065/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/19161/Makefile b/qcom/proprietary/devicetree-4.19/19161/Makefile
+index 3738462..60a45fb 100644
+--- a/qcom/proprietary/devicetree-4.19/19161/Makefile
++++ b/qcom/proprietary/devicetree-4.19/19161/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/19705/Makefile b/qcom/proprietary/devicetree-4.19/19705/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/19705/Makefile
++++ b/qcom/proprietary/devicetree-4.19/19705/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/19705_t0_evt2/Makefile b/qcom/proprietary/devicetree-4.19/19705_t0_evt2/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/19705_t0_evt2/Makefile
++++ b/qcom/proprietary/devicetree-4.19/19705_t0_evt2/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/19795/Makefile b/qcom/proprietary/devicetree-4.19/19795/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/19795/Makefile
++++ b/qcom/proprietary/devicetree-4.19/19795/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/19795_t0_evt2/Makefile b/qcom/proprietary/devicetree-4.19/19795_t0_evt2/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/19795_t0_evt2/Makefile
++++ b/qcom/proprietary/devicetree-4.19/19795_t0_evt2/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/19805/Makefile b/qcom/proprietary/devicetree-4.19/19805/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/19805/Makefile
++++ b/qcom/proprietary/devicetree-4.19/19805/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/19811/Makefile b/qcom/proprietary/devicetree-4.19/19811/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/19811/Makefile
++++ b/qcom/proprietary/devicetree-4.19/19811/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/19821/Makefile b/qcom/proprietary/devicetree-4.19/19821/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/19821/Makefile
++++ b/qcom/proprietary/devicetree-4.19/19821/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/19855/Makefile b/qcom/proprietary/devicetree-4.19/19855/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/19855/Makefile
++++ b/qcom/proprietary/devicetree-4.19/19855/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/20061/Makefile b/qcom/proprietary/devicetree-4.19/20061/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/20061/Makefile
++++ b/qcom/proprietary/devicetree-4.19/20061/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/20135/Makefile b/qcom/proprietary/devicetree-4.19/20135/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/20135/Makefile
++++ b/qcom/proprietary/devicetree-4.19/20135/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/20161/Makefile b/qcom/proprietary/devicetree-4.19/20161/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/20161/Makefile
++++ b/qcom/proprietary/devicetree-4.19/20161/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/20351/Makefile b/qcom/proprietary/devicetree-4.19/20351/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/20351/Makefile
++++ b/qcom/proprietary/devicetree-4.19/20351/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/20607/Makefile b/qcom/proprietary/devicetree-4.19/20607/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/20607/Makefile
++++ b/qcom/proprietary/devicetree-4.19/20607/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/20809/Makefile b/qcom/proprietary/devicetree-4.19/20809/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/20809/Makefile
++++ b/qcom/proprietary/devicetree-4.19/20809/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/20828/Makefile b/qcom/proprietary/devicetree-4.19/20828/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/20828/Makefile
++++ b/qcom/proprietary/devicetree-4.19/20828/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/21615/Makefile b/qcom/proprietary/devicetree-4.19/21615/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/21615/Makefile
++++ b/qcom/proprietary/devicetree-4.19/21615/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/21619/Makefile b/qcom/proprietary/devicetree-4.19/21619/Makefile
+index 3738462..60a45fb 100755
+--- a/qcom/proprietary/devicetree-4.19/21619/Makefile
++++ b/qcom/proprietary/devicetree-4.19/21619/Makefile
+@@ -5,7 +5,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+     kona-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ 
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
+diff --git a/qcom/proprietary/devicetree-4.19/jin/Makefile b/qcom/proprietary/devicetree-4.19/jin/Makefile
+index d2a3d11..6f32a69 100755
+--- a/qcom/proprietary/devicetree-4.19/jin/Makefile
++++ b/qcom/proprietary/devicetree-4.19/jin/Makefile
+@@ -3,7 +3,7 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+         jin-20161-mtp-overlay.dtbo
+     jin-20161-mtp-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
+ else
+-    dtb-$(CONFIG_ARCH_LITO) += kona-mtp.dtb
++    dtb-$(CONFIG_ARCH_KONA) += kona-mtp.dtb
+ endif
+ 
+ always		:= $(dtb-y)
